@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="kartlyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3B82F6"/>
+      <stop offset="100%" stop-color="#1D4ED8"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="128" fill="url(#kartlyGrad)"/>
+  <!-- Cart body -->
+  <path d="M110 150h54l36 160h182l30-120H190" stroke="#FFFFFF" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Cart wheels -->
+  <circle cx="220" cy="385" r="30" fill="#FFFFFF"/>
+  <circle cx="365" cy="385" r="30" fill="#FFFFFF"/>
+  <!-- AI Sparkle Badge -->
+  <path d="M350 90l12 28 28 12-28 12-12 28-12-28-28-12 28-12 12-28z" fill="#FBBF24"/>
+</svg>

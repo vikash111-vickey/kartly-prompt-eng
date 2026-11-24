@@ -1,0 +1,44 @@
+# Firebase App Hosting configuration for Kartly
+# Docs: https://firebase.google.com/docs/app-hosting/configure
+
+runConfig:
+  cpu: 1
+  memoryMiB: 512
+  minInstances: 0
+  maxInstances: 2
+  concurrency: 40
+
+env:
+  # Non-secret application configuration
+  - variable: GEMINI_MODEL
+    value: gemini-2.5-flash
+    availability:
+      - RUNTIME
+
+  - variable: GEMINI_FALLBACK_MODELS
+    value: gemini-3.5-flash-lite,gemini-3-flash-preview
+    availability:
+      - RUNTIME
+
+  - variable: USE_MOCK_SEARCH
+    value: "false"
+    availability:
+      - RUNTIME
+
+  - variable: DEMO_MODE
+    value: "false"
+    availability:
+      - RUNTIME
+
+  # Secret references (managed via Cloud Secret Manager / Firebase CLI)
+  # Do not place raw secrets here. Grant access using:
+  # firebase apphosting:secrets:grantaccess <secret-name> --backend <backend-id>
+  - variable: GEMINI_API_KEY
+    secret: gemini-api-key
+    availability:
+      - RUNTIME
+
+  - variable: SERPAPI_KEY
+    secret: serpapi-key
+    availability:
+      - RUNTIME
