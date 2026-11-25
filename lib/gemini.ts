@@ -22,26 +22,33 @@ export function clearModelCooldowns(): void {
   modelCooldownMap.clear();
 }
 
+export const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
+export const DEFAULT_FALLBACK_MODELS = [
+  "gemini-3.5-flash-lite",
+  "gemini-3-flash-preview",
+];
+
 /**
  * Retrieves the primary model name from process.env.GEMINI_MODEL.
- * Never hardcodes the model name.
+ * Falls back to DEFAULT_GEMINI_MODEL if undefined.
  */
 export function getGeminiModel(): string {
   const model = process.env.GEMINI_MODEL;
-  if (!model) {
-    throw new Error(
-      "GEMINI_MODEL environment variable is not defined. Please configure it in .env.local"
-    );
+  if (model && model.trim().length > 0) {
+    return model.trim();
   }
-  return model.trim();
+  return DEFAULT_GEMINI_MODEL;
 }
 
 /**
  * Reads optional fallback models from process.env.GEMINI_FALLBACK_MODELS (comma-separated).
+ * Falls back to DEFAULT_FALLBACK_MODELS if undefined.
  */
 export function getFallbackModels(): string[] {
   const raw = process.env.GEMINI_FALLBACK_MODELS;
-  if (!raw) return [];
+  if (!raw || raw.trim().length === 0) {
+    return DEFAULT_FALLBACK_MODELS;
+  }
   return raw
     .split(",")
     .map((m) => m.trim())
