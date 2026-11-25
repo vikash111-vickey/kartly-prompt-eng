@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { PROMPT_VERSION } from "@/lib/prompts/kartly-system";
-import { getFallbackModels } from "@/lib/gemini";
+import { getGeminiModel, getFallbackModels } from "@/lib/gemini";
 
 export async function GET() {
-  const primaryModel = process.env.GEMINI_MODEL?.trim();
+  const primaryModel = getGeminiModel();
   const fallbackModels = getFallbackModels();
 
   const models: string[] = [];
