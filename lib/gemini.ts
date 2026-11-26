@@ -22,8 +22,9 @@ export function clearModelCooldowns(): void {
   modelCooldownMap.clear();
 }
 
-export const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
+export const DEFAULT_GEMINI_MODEL = "gemini-3.8-flash";
 export const DEFAULT_FALLBACK_MODELS = [
+  "gemini-2.5-flash",
   "gemini-3.5-flash-lite",
   "gemini-3-flash-preview",
 ];
