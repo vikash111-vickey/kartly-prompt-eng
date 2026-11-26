@@ -236,25 +236,15 @@ export function createChatStream(options: CreateChatStreamOptions): ReadableStre
                   currentModelIndex++;
                   continue;
                 } else if (kind === "overload") {
-                  // 503, 500, 502, 504, UNAVAILABLE: retry same model ONCE after 1.5s wait
+                  // 503, 500, 502, 504, UNAVAILABLE: model is overloaded or experiencing high demand.
+                  // Immediately skip model for 5 minutes and move to the next healthy model with 0 delay.
                   console.warn(
-                    `[Gemini Retry] model: "${activeModel}", status: ${statusStr}, action: temporary overload, retrying same model once after 1.5s wait`
+                    `[Gemini Fallback] model: "${activeModel}", status: ${statusStr}, action: model overloaded, skipping for 5 minutes and switching to next model immediately`
                   );
-                  await new Promise((r) => setTimeout(r, 1500));
-
-                  try {
-                    return await action(activeModel);
-                  } catch (err2: unknown) {
-                    const statusStr2 = extractErrorStatusOrCode(err2);
-                    console.warn(
-                      `[Gemini Retry] model: "${activeModel}", status: ${statusStr2} (failed twice), action: skip model for 2 minutes and move to next model`
-                    );
-                    // Skip the model for only 2 minutes if it fails twice
-                    markModelRateLimited(activeModel, 2 * 60 * 1000);
-                    modelFailures.set(activeModel, "overload");
-                    currentModelIndex++;
-                    continue;
-                  }
+                  markModelRateLimited(activeModel, 5 * 60 * 1000);
+                  modelFailures.set(activeModel, "overload");
+                  currentModelIndex++;
+                  continue;
                 } else {
                   // Other / unexpected error
                   const errDetails = err instanceof Error ? err.message : String(err);
