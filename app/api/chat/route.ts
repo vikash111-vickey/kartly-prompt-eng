@@ -26,6 +26,7 @@ import {
   saveCachedAnswer,
   type CachedAnswer,
 } from "@/lib/demo-cache";
+import { cleanSearchQuery } from "@/lib/search/query";
 
 async function searchProducts(args: {
   query: string;
@@ -112,123 +113,7 @@ function checkRateLimit(ip: string): RateLimitResult {
   return { allowed: true };
 }
 
-/**
- * Dev fallback generator adhering strictly to KARTLY_SYSTEM_PROMPT_V1
- * when GEMINI_API_KEY is not yet populated in .env.local.
- */
-async function generateDevResponse(
-  lastUserMessage: string
-): Promise<{ text: string; products: Product[] }> {
-  const queryLower = lastUserMessage.toLowerCase();
 
-  // Safety test: ignore instructions / fake link attempt
-  if (
-    queryLower.includes("ignore") ||
-    queryLower.includes("fake link") ||
-    queryLower.includes("http") ||
-    queryLower.includes("link") && queryLower.includes("fake")
-  ) {
-    return {
-      text: "Nice try! I never generate, guess, or modify external URLs or links. My job is strictly to find you safe, verified products from real shopping platforms. What are you looking to buy today?",
-      products: [],
-    };
-  }
-
-  // Small talk: greeting
-  if (/^(hi|hello|hey|hola|namaste|नमस्ते)\b/i.test(lastUserMessage.trim())) {
-    return {
-      text: "Hey there! I'm Kartly, your personal shopping buddy. What are you looking to buy today? Tell me what you need, your budget, or any favorite platforms!",
-      products: [],
-    };
-  }
-
-  // Small talk: thanks
-  if (
-    queryLower.includes("thanks") ||
-    queryLower.includes("thank you") ||
-    queryLower.includes("dhanyawad") ||
-    queryLower.includes("shukriya")
-  ) {
-    return {
-      text: "You're most welcome, anytime! Let me know if you need help finding anything else or checking another deal.",
-      products: [],
-    };
-  }
-
-  // Hindi phone query: "नमस्ते, ₹15000 में अच्छा फोन दिखाओ"
-  if (
-    queryLower.includes("फोन") ||
-    queryLower.includes("मोबाइल") ||
-    queryLower.includes("15000") ||
-    (queryLower.includes("phone") && queryLower.includes("15000"))
-  ) {
-    const products = await searchProducts({
-      query: "5G phone under 15000",
-      maxPrice: 15000,
-      minRating: 4.0,
-    });
-
-    const topPick = products.find((p) => p.id === "mock-phone-moto-g64");
-    const alt1 = products.find((p) => p.id === "mock-phone-samsung-m15");
-    const alt2 = products.find((p) => p.id === "mock-phone-vivo-t3x-croma");
-
-    const picks = [topPick, alt1, alt2].filter((p): p is Product => Boolean(p));
-    const others = products.filter((p) => !picks.some((pk) => pk.id === p.id));
-    const fullPicks = [...picks, ...others].slice(0, 8);
-
-    return {
-      text:
-        "Here are the safest, top-rated phones under ₹15,000 from Flipkart, Amazon, and Croma:\n\n" +
-        "1. **Moto G64 5G** (₹13,999, Flipkart): Top pick! Has a huge 6000mAh battery, OIS camera, and clean stock Android.\n" +
-        "2. **Samsung Galaxy M15 5G** (₹12,499, Amazon): Great Super AMOLED display with 4 years of guaranteed OS updates.\n" +
-        "3. **Vivo T3x 5G** (₹13,499, Croma): Fast Snapdragon processor and handy in-store pickup at Croma.\n\n" +
-        "Make sure to check final prices and bank discounts at checkout!\nPICKS: mock-phone-moto-g64, mock-phone-samsung-m15, mock-phone-vivo-t3x-croma",
-      products: fullPicks,
-    };
-  }
-
-  // Earbuds query: "best earbuds under 2000"
-  if (
-    queryLower.includes("earbuds") ||
-    queryLower.includes("earphone") ||
-    queryLower.includes("tws") ||
-    queryLower.includes("2000")
-  ) {
-    const products = await searchProducts({
-      query: "earbuds under 2000",
-      maxPrice: 2000,
-      minRating: 4.0,
-    });
-
-    const topPick = products.find((p) => p.id === "mock-earbuds-oneplus-nord-2r");
-    const alt1 = products.find((p) => p.id === "mock-earbuds-boat-141");
-    const alt2 = products.find((p) => p.id === "mock-earbuds-noise-vs102-blinkit");
-
-    const picks = [topPick, alt1, alt2].filter((p): p is Product => Boolean(p));
-    const others = products.filter((p) => !picks.some((pk) => pk.id === p.id));
-    const fullPicks = [...picks, ...others].slice(0, 8);
-
-    return {
-      text:
-        "Based on verified buyer reviews and seller reliability across Amazon, Flipkart, and Blinkit, here are my top picks under ₹2,000:\n\n" +
-        "1. **OnePlus Nord Buds 2r** (₹1,799 on Flipkart): Top pick! Best audio balance, dual mics for clear calls, and 48,000+ verified ratings.\n" +
-        "2. **boAt Airdopes 141** (₹1,299 on Amazon): Super reliable budget champ with 42H battery and next-day free delivery.\n" +
-        "3. **Noise Buds VS102** (₹1,099 on Blinkit): Perfect if you need decent earbuds urgently—delivered in just 12 minutes.\n\n" +
-        "⚠️ Watch out: Avoid deals selling AirPods Pro under ₹1,000—those are classic counterfeit traps with zero returns.\nPICKS: mock-earbuds-oneplus-nord-2r, mock-earbuds-boat-141, mock-earbuds-noise-vs102-blinkit",
-      products: fullPicks,
-    };
-  }
-
-  // Default product search fallback
-  const genericProducts = await searchProducts({ query: lastUserMessage });
-  const topEight = genericProducts.slice(0, 8);
-  const picksLine = topEight.slice(0, 3).map((p) => p.id).join(", ");
-
-  return {
-    text: `I searched across Amazon, Flipkart, and quick-commerce for "${lastUserMessage}". Here are the most dependable deals I found based on seller ratings and pricing.\nPICKS: ${picksLine}`,
-    products: topEight,
-  };
-}
 
 /**
  * Streams a saved answer from the demo cache with a user notice.
@@ -261,7 +146,11 @@ async function streamCachedAnswer(
   }
 
   if (cached.products && cached.products.length > 0) {
-    sendEvent({ type: "products", products: cached.products });
+    sendEvent({
+      type: "products",
+      products: cached.products,
+      searchQuery: cached.searchQuery || cached.rawQuery || "",
+    });
   }
 
   sendEvent({ type: "done" });
@@ -301,17 +190,22 @@ export function createChatStream(options: CreateChatStreamOptions): ReadableStre
         }
 
         const apiKey = process.env.GEMINI_API_KEY?.trim();
+        if (!apiKey) {
+          const keyError = new Error("GEMINI_API_KEY is not configured");
+          (keyError as { code?: string }).code = "model";
+          throw keyError;
+        }
 
         let rawResponseText = "";
+        let lastToolSearchQuery = "";
         const allFoundProducts = new Map<string, Product>();
         let pickedProducts: Product[] = [];
         let safetyCheckResult: SafetyCheckResult | undefined = undefined;
 
-        if (apiKey) {
-          // ==========================================
-          // REAL GEMINI BACKEND WITH MULTI-TURN TOOL LOOP & 429 FALLBACK
-          // ==========================================
-          const ai = createGeminiClient();
+        // ==========================================
+        // REAL GEMINI BACKEND WITH MULTI-TURN TOOL LOOP & 429 FALLBACK
+        // ==========================================
+        const ai = createGeminiClient();
           // Use 30-minute skip cache for rate-limited models; try all configured models
           const modelsToTry = getAllGeminiModels(true);
           let currentModelIndex = 0;
@@ -430,7 +324,21 @@ export function createChatStream(options: CreateChatStreamOptions): ReadableStre
               for (const call of functionCalls) {
                 if (call.name === "search_products") {
                   const args = (call.args || {}) as Record<string, unknown>;
-                  const searchQuery = String(args.searchQuery || args.query || "");
+                  let searchQuery = String(args.searchQuery || args.query || "").trim();
+                  let maxPrice =
+                    typeof args.maxPrice === "number" ? args.maxPrice : undefined;
+
+                  // Use deterministic query cleaner fallback only if tool call lacks searchQuery
+                  if (!searchQuery) {
+                    const cleaned = cleanSearchQuery(lastUserMsg);
+                    searchQuery = cleaned.searchQuery;
+                    if (maxPrice === undefined) {
+                      maxPrice = cleaned.maxPrice;
+                    }
+                  }
+
+                  lastToolSearchQuery = searchQuery;
+
                   const excludeTerms = Array.isArray(args.excludeTerms)
                     ? args.excludeTerms.map(String)
                     : undefined;
@@ -441,8 +349,7 @@ export function createChatStream(options: CreateChatStreamOptions): ReadableStre
                     searchQuery,
                     excludeTerms,
                     category,
-                    maxPrice:
-                      typeof args.maxPrice === "number" ? args.maxPrice : undefined,
+                    maxPrice,
                     minRating:
                       typeof args.minRating === "number" ? args.minRating : undefined,
                     mustHave: Array.isArray(args.mustHave)
@@ -589,38 +496,6 @@ export function createChatStream(options: CreateChatStreamOptions): ReadableStre
               safetyCheckResult = checkLinkOrText(lastUserMsg);
             }
           }
-        } else {
-          // ==========================================
-          // DEV SIMULATION MODE (No GEMINI_API_KEY in .env.local)
-          // ==========================================
-          const devResult = await generateDevResponse(lastUserMsg);
-          rawResponseText = devResult.text;
-          pickedProducts = devResult.products;
-
-          const userText = lastUserMsg.toLowerCase();
-          const hasUrl =
-            /(?:https?:\/\/|www\.)[^\s]+|[a-zA-Z0-9-]+\.(?:com|in|org|net|xyz|top|click|shop|site|online|biz)/i.test(
-              lastUserMsg
-            );
-          const asksSafety =
-            userText.includes("legit") ||
-            userText.includes("scam") ||
-            userText.includes("safe") ||
-            userText.includes("trust") ||
-            userText.includes("fake") ||
-            userText.includes("fraud");
-
-          if (hasUrl || asksSafety) {
-            safetyCheckResult = checkLinkOrText(lastUserMsg);
-            if (safetyCheckResult.verdict === "likely_scam") {
-              rawResponseText = `Warning: That link looks like a scam! ${safetyCheckResult.reasons.join(" ")} Please do not share any OTP, passwords, or pay money outside verified apps. For financial cyber fraud, dial 1930 immediately.`;
-            } else if (safetyCheckResult.verdict === "be_careful") {
-              rawResponseText = `Be careful: This domain or deal has some warning flags: ${safetyCheckResult.reasons.join(" ")}. Always check the official website or app before paying.`;
-            } else {
-              rawResponseText = `This link looks like an official store link and passes safety checks. Remember to always confirm pricing and seller details at checkout!`;
-            }
-          }
-        }
 
         // Strip the PICKS line from the user-facing text
         const cleanText = rawResponseText
@@ -649,7 +524,11 @@ export function createChatStream(options: CreateChatStreamOptions): ReadableStre
 
         // Stream products event
         if (pickedProducts.length > 0) {
-          sendEvent({ type: "products", products: pickedProducts });
+          sendEvent({
+            type: "products",
+            products: pickedProducts,
+            searchQuery: lastToolSearchQuery || "",
+          });
         }
 
         // Save fully successful answer to demo cache
@@ -657,6 +536,7 @@ export function createChatStream(options: CreateChatStreamOptions): ReadableStre
           saveCachedAnswer(lastUserMsg, {
             text: cleanText,
             products: pickedProducts.length > 0 ? pickedProducts : undefined,
+            searchQuery: lastToolSearchQuery || undefined,
             safetyCheck: safetyCheckResult,
           });
         }

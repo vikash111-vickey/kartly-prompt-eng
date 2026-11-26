@@ -61,6 +61,7 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   products?: Product[];
+  searchQuery?: string;
   safetyCheck?: SafetyCheckResult;
   errorCode?: ChatErrorCode;
   isCutOff?: boolean;

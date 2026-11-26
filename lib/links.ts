@@ -179,6 +179,11 @@ export function buildPlatformSearchLink(platform: string, query: string): string
     case "tata cliq":
       return `https://www.tatacliq.com/search/?searchCategory=all&text=${encodedQuery}`;
 
+    // Alibaba search URL pattern: https://www.alibaba.com/trade/search?SearchText={query}
+    // Live site pattern confirmed working on 2026-11-26
+    case "alibaba":
+      return `https://www.alibaba.com/trade/search?SearchText=${encodedQuery}`;
+
     default:
       return `https://www.google.com/search?q=${encodeURIComponent(`${platform} ${query}`)}`;
   }

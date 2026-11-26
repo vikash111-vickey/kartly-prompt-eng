@@ -3,6 +3,9 @@ import { buildPlatformSearchLink, validateProductLink } from "@/lib/links";
 
 export interface SearchProductsArgs {
   query: string;
+  searchQuery?: string;
+  category?: string;
+  excludeTerms?: string[];
   maxPrice?: number;
   minRating?: number;
   mustHave?: string[];

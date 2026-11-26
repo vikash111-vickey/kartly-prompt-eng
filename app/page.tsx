@@ -94,13 +94,33 @@ export default function Home() {
               }
             } else if (event.type === "products") {
               const incomingProducts = (event.products || []) as Product[];
-              setMessages((prev) =>
-                prev.map((msg) =>
-                  msg.id === assistantMsgId
-                    ? { ...msg, products: incomingProducts }
-                    : msg
-                )
-              );
+              const incomingSearchQuery =
+                typeof event.searchQuery === "string" ? event.searchQuery : "";
+              if (!assistantCreated) {
+                assistantCreated = true;
+                setMessages((prev) => [
+                  ...prev,
+                  {
+                    id: assistantMsgId,
+                    role: "assistant",
+                    content: "",
+                    products: incomingProducts,
+                    searchQuery: incomingSearchQuery,
+                  },
+                ]);
+              } else {
+                setMessages((prev) =>
+                  prev.map((msg) =>
+                    msg.id === assistantMsgId
+                      ? {
+                          ...msg,
+                          products: incomingProducts,
+                          searchQuery: incomingSearchQuery || msg.searchQuery,
+                        }
+                      : msg
+                  )
+                );
+              }
             } else if (event.type === "notice") {
               const noticeMsg = (event.message as string) || "";
               if (!assistantCreated) {
@@ -123,13 +143,26 @@ export default function Home() {
               }
             } else if (event.type === "safety_check") {
               const incomingSafety = event.safetyCheck as SafetyCheckResult;
-              setMessages((prev) =>
-                prev.map((msg) =>
-                  msg.id === assistantMsgId
-                    ? { ...msg, safetyCheck: incomingSafety }
-                    : msg
-                )
-              );
+              if (!assistantCreated) {
+                assistantCreated = true;
+                setMessages((prev) => [
+                  ...prev,
+                  {
+                    id: assistantMsgId,
+                    role: "assistant",
+                    content: "",
+                    safetyCheck: incomingSafety,
+                  },
+                ]);
+              } else {
+                setMessages((prev) =>
+                  prev.map((msg) =>
+                    msg.id === assistantMsgId
+                      ? { ...msg, safetyCheck: incomingSafety }
+                      : msg
+                  )
+                );
+              }
             } else if (event.type === "error") {
               setIsLoading(false);
               const code = event.code || "unknown";

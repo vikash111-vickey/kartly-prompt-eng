@@ -2,7 +2,15 @@
 
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { RotateCcw, AlertCircle, ChevronDown, ChevronUp, Info } from "lucide-react";
+import {
+  RotateCcw,
+  ChevronDown,
+  ChevronUp,
+  Info,
+  Search,
+  ExternalLink,
+} from "lucide-react";
+import ReactMarkdown from "react-markdown";
 import type { ChatMessage, Product } from "@/types/product";
 import { AskInput } from "./ask-input";
 import { ProductCard } from "./product-card";
@@ -11,6 +19,8 @@ import { CompareDialog } from "./compare-dialog";
 import { RefineChips, RefineSortKey, sortProductsByRefine } from "./refine-chips";
 import { SafetyCard } from "./safety-card";
 import { WishlistHeaderButton } from "./wishlist";
+import { buildPlatformSearchLink } from "@/lib/links";
+import { cleanSearchQuery } from "@/lib/search/query";
 
 export interface ChatViewProps {
   messages: ChatMessage[];
@@ -21,17 +31,88 @@ export interface ChatViewProps {
 }
 
 /**
- * Renders the products attached to an assistant message with its own refine sort choice
- * and "Show more" pagination (5 default, expandable).
+ * Determines relevant platform links based on query and product titles.
+ */
+function getMoreStoresPlatforms(query: string, products: Product[]): string[] {
+  const combinedText = `${query} ${products.map((p) => p.title).join(" ")}`.toLowerCase();
+
+  // 1. Beauty, Skincare & Cosmetics (Takes priority over food/grocery words like rice/tea/oil in cosmetic titles)
+  const isBeautyOrSkincare =
+    /\b(skincare|skin|makeup|cosmetics?|serum|face\s*wash|creams?|lotions?|lipsticks?|lip\s*balm|perfumes?|fragrance|beauty|sunscreen|moisturizer|glow)\b/i.test(
+      combinedText
+    );
+
+  if (isBeautyOrSkincare) {
+    return ["Nykaa", "Myntra", "Amazon", "Flipkart", "Tata CLiQ"];
+  }
+
+  // 2. Groceries & Quick-Commerce (groceries: Blinkit, Zepto, BigBasket, Amazon, Flipkart)
+  const isGrocery =
+    /\b(grocer|groceries|vegetables?|fruits?|milk|bread|butter|cheese|paneer|curd|atta|dal|spices?|cooking\s*oil|snacks?|biscuits?|chips|beverages?|soft\s*drinks?|10\s*min(?:ute)?s?)\b/i.test(
+      combinedText
+    );
+
+  if (isGrocery) {
+    return ["Blinkit", "Zepto", "BigBasket", "Amazon", "Flipkart"];
+  }
+
+  // 3. Fashion & Apparel (fashion: Myntra, Meesho, Ajio, Amazon, Flipkart)
+  const isFashion =
+    /\b(shirts?|t-?shirts?|pants?|jeans|trousers?|dresses?|sarees?|kurtas?|shoes?|sneakers?|jackets?|hoodies?|tops?|fashion|clothing|footwear|sandals?|heels?|handbags?)\b/i.test(
+      combinedText
+    );
+
+  if (isFashion) {
+    return ["Myntra", "Meesho", "Ajio", "Amazon", "Flipkart"];
+  }
+
+  // 4. Electronics & Furniture (electronics and furniture: Amazon, Flipkart, Croma, Reliance Digital, Tata CLiQ, Snapdeal)
+  const isElectronicsOrFurniture =
+    /\b(phones?|mobiles?|smartphones?|laptops?|earbuds?|earphones?|headphones?|watch(?:es)?|smartwatch(?:es)?|tv|televisions?|tablets?|ipads?|chairs?|tables?|desks?|sofas?|beds?|furniture|study|cameras?|monitors?|keyboards?|mouse|refrigerators?|fridges?|ac|air\s*conditioners?)\b/i.test(
+      combinedText
+    );
+
+  if (isElectronicsOrFurniture) {
+    return [
+      "Amazon",
+      "Flipkart",
+      "Croma",
+      "Reliance Digital",
+      "Tata CLiQ",
+      "Snapdeal",
+    ];
+  }
+
+  return [
+    "Amazon",
+    "Flipkart",
+    "Myntra",
+    "Croma",
+    "Reliance Digital",
+    "Tata CLiQ",
+    "Snapdeal",
+    "Meesho",
+  ];
+}
+
+/**
+ * Renders the products attached to an assistant message with its own refine sort choice,
+ * "Show more" pagination, and "More stores" platform search chips.
  */
 function MessageProductsSection({
   products,
   compareIds,
   onToggleCompare,
+  messageSearchQuery,
+  userQuery = "",
+  allMessages = [],
 }: {
   products: Product[];
   compareIds: string[];
   onToggleCompare: (id: string) => void;
+  messageSearchQuery?: string;
+  userQuery?: string;
+  allMessages?: ChatMessage[];
 }) {
   const [sortKey, setSortKey] = useState<RefineSortKey>("default");
   const [showAll, setShowAll] = useState(false);
@@ -43,6 +124,57 @@ function MessageProductsSection({
 
   const visibleProducts = showAll ? sortedProducts : sortedProducts.slice(0, 3);
   const remainingCount = sortedProducts.length - 3;
+
+  // Determine high-fidelity cleaned searchQuery for platform search links:
+  // 1. Tool-level searchQuery from Gemini/backend (e.g. "skincare gift set")
+  // 2. Scan conversation backwards for the actual shopping prompt (avoiding "ok", "yes", etc.)
+  // 3. Clean userQuery
+  // 4. Extract core keywords from product titles
+  const cleanedSearchQuery = useMemo(() => {
+    // 1. Direct tool searchQuery
+    if (messageSearchQuery && messageSearchQuery.trim()) {
+      const res = cleanSearchQuery(messageSearchQuery);
+      if (res.searchQuery) return res.searchQuery;
+      return messageSearchQuery.trim();
+    }
+
+    // 2. Scan conversation backward for a substantive user request
+    if (allMessages && allMessages.length > 0) {
+      for (let i = allMessages.length - 1; i >= 0; i--) {
+        const msg = allMessages[i];
+        if (msg.role === "user" && msg.content) {
+          const res = cleanSearchQuery(msg.content);
+          if (res.searchQuery && res.searchQuery.length >= 3) {
+            return res.searchQuery;
+          }
+        }
+      }
+    }
+
+    // 3. User prior query
+    if (userQuery && userQuery.trim()) {
+      const res = cleanSearchQuery(userQuery);
+      if (res.searchQuery) return res.searchQuery;
+    }
+
+    // 4. Fallback from top product title
+    if (products[0]?.title) {
+      const simplified = products[0].title
+        .replace(/\|.*$/g, "")
+        .replace(/-.*$/g, "")
+        .replace(/\(.*?\)/g, "")
+        .trim();
+      const words = simplified.split(/\s+/).slice(0, 3).join(" ");
+      if (words.length >= 3) return words;
+    }
+
+    return "";
+  }, [messageSearchQuery, userQuery, allMessages, products]);
+
+  // Determine platforms relevant to this search category
+  const moreStoresPlatforms = useMemo(() => {
+    return getMoreStoresPlatforms(cleanedSearchQuery || userQuery, products);
+  }, [cleanedSearchQuery, userQuery, products]);
 
   return (
     <div className="mt-4 pt-3.5 border-t border-gray-100 space-y-3">
@@ -61,10 +193,11 @@ function MessageProductsSection({
 
       {/* Product Cards List */}
       <div className="grid grid-cols-1 gap-2.5">
-        {visibleProducts.map((product) => (
+        {visibleProducts.map((product, index) => (
           <ProductCard
             key={product.id}
             product={product}
+            isTopPick={index === 0}
             isCompared={compareIds.includes(product.id)}
             onToggleCompare={onToggleCompare}
           />
@@ -93,6 +226,33 @@ function MessageProductsSection({
           </button>
         </div>
       )}
+
+      {/* "More stores" Row under top picks */}
+      {moreStoresPlatforms.length > 0 && cleanedSearchQuery && (
+        <div className="pt-3 border-t border-gray-100 space-y-2">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+            More stores
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {moreStoresPlatforms.map((platform) => {
+              const searchLink = buildPlatformSearchLink(platform, cleanedSearchQuery);
+              return (
+                <a
+                  key={platform}
+                  href={searchLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 hover:text-gray-950 border border-gray-200 rounded-full transition-colors whitespace-nowrap cursor-pointer shadow-2xs"
+                >
+                  <Search className="size-3 text-gray-400" />
+                  <span>Search on {platform}</span>
+                  <ExternalLink className="size-2.5 text-gray-400 ml-0.5" />
+                </a>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -109,22 +269,13 @@ export function ChatView({
   // Compare state: max 3 product IDs
   const [compareIds, setCompareIds] = useState<string[]>([]);
   const [isCompareOpen, setIsCompareOpen] = useState(false);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Auto-clear toast after 3 seconds
-  useEffect(() => {
-    if (toastMessage) {
-      const timer = setTimeout(() => setToastMessage(null), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [toastMessage]);
-
-  // Aggregate all products across messages for the comparison modal
-  const allProductsMap = useMemo(() => {
+  // Collect all unique products across all messages for compare lookups
+  const allMessageProducts = useMemo(() => {
     const map = new Map<string, Product>();
-    for (const m of messages) {
-      if (m.products) {
-        for (const p of m.products) {
+    for (const msg of messages) {
+      if (msg.products) {
+        for (const p of msg.products) {
           map.set(p.id, p);
         }
       }
@@ -134,95 +285,71 @@ export function ChatView({
 
   const comparedProducts = useMemo(() => {
     return compareIds
-      .map((id) => allProductsMap.get(id))
+      .map((id) => allMessageProducts.get(id))
       .filter((p): p is Product => Boolean(p));
-  }, [compareIds, allProductsMap]);
+  }, [compareIds, allMessageProducts]);
 
-  // Toggle compare selection with max 3 enforcement
   const handleToggleCompare = (id: string) => {
     setCompareIds((prev) => {
       if (prev.includes(id)) {
         return prev.filter((item) => item !== id);
       }
       if (prev.length >= 3) {
-        setToastMessage("You can compare up to 3 products");
         return prev;
       }
       return [...prev, id];
     });
   };
 
-  // Reset handler (clears comparison and invokes parent onReset)
-  const handleReset = () => {
-    setCompareIds([]);
-    setIsCompareOpen(false);
-    setToastMessage(null);
-    onReset?.();
-  };
-
-  // Auto-scroll to newest message
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isLoading]);
 
   return (
-    <div className="flex flex-col h-screen w-full bg-white">
-      {/* Minimal Top Header */}
-      <header className="sticky top-0 z-20 flex items-center justify-between px-4 sm:px-8 py-3.5 bg-white/90 backdrop-blur-md border-b border-gray-100">
+    <div className="flex flex-col min-h-dvh bg-white text-gray-950">
+      {/* Sticky Top Header */}
+      <header className="sticky top-0 z-20 flex items-center justify-between px-4 py-3 bg-white/90 backdrop-blur-md border-b border-gray-100">
         <div className="flex items-center gap-2">
-          <span className="font-semibold text-gray-950 text-base tracking-tight">
+          <span className="font-semibold text-lg tracking-tight text-gray-950">
             Kartly
           </span>
-          <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-medium">
+          <span className="text-[10px] font-medium text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/60 whitespace-nowrap">
             AI Shopping
           </span>
         </div>
-
         <div className="flex items-center gap-2">
           <WishlistHeaderButton />
-
           {onReset && (
             <button
-              onClick={handleReset}
               type="button"
-              className="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-900 px-2.5 py-1.5 rounded-full hover:bg-gray-100 transition-colors cursor-pointer"
-              title="Start new shopping search"
+              onClick={onReset}
+              className="text-xs font-medium text-gray-600 hover:text-gray-900 px-3 py-1.5 rounded-full border border-gray-200 hover:bg-gray-50 transition-colors cursor-pointer whitespace-nowrap"
             >
-              <RotateCcw className="size-3.5" />
-              <span className="hidden sm:inline">New search</span>
+              New search
             </button>
           )}
         </div>
       </header>
 
-      {/* Toast Notification (e.g. "You can compare up to 3 products") */}
-      <AnimatePresence>
-        {toastMessage && (
-          <motion.div
-            initial={{ opacity: 0, y: -16 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -16 }}
-            role="status"
-            aria-live="polite"
-            className="fixed top-14 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-xs font-medium rounded-full shadow-lg border border-gray-800"
-          >
-            <AlertCircle className="size-3.5 text-amber-400 shrink-0" />
-            <span>{toastMessage}</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Message List */}
+      {/* Scrollable Message List */}
       <main
-        className="flex-1 overflow-y-auto px-4 py-6 w-full max-w-2xl mx-auto space-y-4"
+        className="flex-1 max-w-2xl mx-auto w-full p-4 sm:p-6 space-y-4"
         aria-live="polite"
-        role="log"
-        aria-label="Shopping chat history"
       >
         <AnimatePresence initial={false}>
-          {messages.map((message) => {
+          {messages.map((message, index) => {
             const isUser = message.role === "user";
-            const isError = !isUser && Boolean(message.errorCode && !message.isCutOff);
+            const isError = Boolean(message.errorCode);
+            const userPriorQuery =
+              !isUser && index > 0 && messages[index - 1]?.role === "user"
+                ? messages[index - 1].content
+                : "";
+
+            // Sanitize raw PICKS and internal IDs from user-facing text
+            const sanitizedText = message.content
+              .replace(/(?:^|\n)PICKS:\s*[^\n\r]+/gi, "")
+              .replace(/\((?:sp|mock)-[a-zA-Z0-9-]+\)/gi, "")
+              .trim();
 
             return (
               <motion.div
@@ -249,7 +376,14 @@ export function ChatView({
                     </div>
                   )}
 
-                  <p className="whitespace-pre-wrap">{message.content}</p>
+                  {/* Message Content: User plain text vs. Assistant ReactMarkdown */}
+                  {isUser ? (
+                    <p className="whitespace-pre-wrap">{message.content}</p>
+                  ) : (
+                    <div className="prose prose-sm max-w-none text-gray-900 leading-relaxed break-words">
+                      <ReactMarkdown>{sanitizedText}</ReactMarkdown>
+                    </div>
+                  )}
 
                   {/* Safety Check Card Attachment */}
                   {message.safetyCheck && (
@@ -298,6 +432,9 @@ export function ChatView({
                       products={message.products}
                       compareIds={compareIds}
                       onToggleCompare={handleToggleCompare}
+                      messageSearchQuery={message.searchQuery}
+                      userQuery={userPriorQuery}
+                      allMessages={messages.slice(0, index + 1)}
                     />
                   )}
                 </div>
@@ -387,5 +524,3 @@ export function ChatView({
     </div>
   );
 }
-
-export default ChatView;

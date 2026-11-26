@@ -5,11 +5,16 @@ export interface RelevanceFilterOptions {
   searchQuery?: string;
   excludeTerms?: string[];
   maxPrice?: number;
+  relaxPriceThreshold?: boolean;
 }
 
 export interface RelevanceFilterResult {
   relevant: Product[];
   droppedCount: number;
+  droppedReasons: {
+    excludeTerms: number;
+    belowMinPrice: number;
+  };
   lowRelevance: boolean;
 }
 
@@ -47,10 +52,21 @@ export function filterRelevant(
   options: RelevanceFilterOptions = {}
 ): RelevanceFilterResult {
   if (!products || products.length === 0) {
-    return { relevant: [], droppedCount: 0, lowRelevance: true };
+    return {
+      relevant: [],
+      droppedCount: 0,
+      droppedReasons: { excludeTerms: 0, belowMinPrice: 0 },
+      lowRelevance: true,
+    };
   }
 
-  const { category = "", searchQuery = "", excludeTerms = [], maxPrice } = options;
+  const {
+    category = "",
+    searchQuery = "",
+    excludeTerms = [],
+    maxPrice,
+    relaxPriceThreshold = false,
+  } = options;
 
   const targetCategory = (category || searchQuery).toLowerCase();
   const isGroceriesOrSmall =
@@ -88,6 +104,10 @@ export function filterRelevant(
 
   const relevant: Product[] = [];
   let droppedCount = 0;
+  const droppedReasons = {
+    excludeTerms: 0,
+    belowMinPrice: 0,
+  };
 
   for (const product of products) {
     const title = (product.title || "").toLowerCase();
@@ -96,18 +116,21 @@ export function filterRelevant(
     const matchesExclude = regexList.some((regex) => regex.test(title));
     if (matchesExclude) {
       droppedCount++;
+      droppedReasons.excludeTerms++;
       continue;
     }
 
     // 2. If maxPrice is known, drop products priced under 12% of maxPrice (likely accessory)
-    // unless the category is groceries or small everyday items
+    // unless the category is groceries or small everyday items, OR relaxPriceThreshold is enabled
     if (
+      !relaxPriceThreshold &&
       !isGroceriesOrSmall &&
       priceThreshold !== null &&
       typeof product.price === "number" &&
       product.price < priceThreshold
     ) {
       droppedCount++;
+      droppedReasons.belowMinPrice++;
       continue;
     }
 
@@ -119,6 +142,7 @@ export function filterRelevant(
   return {
     relevant,
     droppedCount,
+    droppedReasons,
     lowRelevance,
   };
 }

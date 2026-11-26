@@ -1,7 +1,6 @@
 "use client";
 
-import React from "react";
-import Image from "next/image";
+import React, { useState } from "react";
 import { ShieldCheck, Heart } from "lucide-react";
 import type { Product } from "@/types/product";
 import { getTotalCost } from "@/lib/cost";
@@ -12,14 +11,20 @@ import { useWishlist } from "./wishlist";
 export interface ProductCardProps {
   product: Product;
   isCompared?: boolean;
+  isTopPick?: boolean;
   onToggleCompare?: (id: string) => void;
 }
 
 export function ProductCard({
   product,
   isCompared = false,
+  isTopPick = false,
   onToggleCompare,
 }: ProductCardProps) {
+  const [imageSrc, setImageSrc] = useState(
+    product.image || "/placeholder-product.svg"
+  );
+
   const isSuspicious =
     (product.redFlags && product.redFlags.length > 0) ||
     (typeof product.trustScore === "number" && product.trustScore < 45) ||
@@ -41,39 +46,46 @@ export function ProductCard({
       }`}
     >
       <div className="flex items-start sm:items-center gap-3 min-w-0 flex-1">
-        {/* Product Image */}
+        {/* Product Image (square, rounded, object-contain, neutral placeholder on error) */}
         <div className="relative size-14 rounded-lg overflow-hidden bg-gray-50 border border-gray-100 shrink-0 flex items-center justify-center p-1">
-          <Image
-            src={product.image || "/placeholder-product.svg"}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={imageSrc}
             alt={product.title}
             width={56}
             height={56}
-            unoptimized
+            onError={() => setImageSrc("/placeholder-product.svg")}
             className="w-full h-full object-contain"
           />
         </div>
 
         {/* Product Info */}
         <div className="min-w-0 flex-1">
-          {/* Header Badges */}
-          <div className="flex items-center gap-1.5 mb-1">
-            {isDirect ? (
-              <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/70">
-                <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                Live
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-200/70">
-                Platform search
+          {/* Header Badges with whitespace-nowrap */}
+          <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+            {isTopPick && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 whitespace-nowrap">
+                Top pick
               </span>
             )}
-            <span className="text-xs font-medium text-gray-500">
+            {isDirect ? (
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/70 whitespace-nowrap">
+                <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Live listing
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-200/70 whitespace-nowrap">
+                Opens store search
+              </span>
+            )}
+            <span className="text-xs font-medium text-gray-500 whitespace-nowrap">
               {product.platform}
             </span>
           </div>
 
+          {/* Title wraps up to 2 lines per spec */}
           <h4
-            className="text-xs sm:text-sm font-semibold text-gray-900 line-clamp-1"
+            className="text-xs sm:text-sm font-semibold text-gray-900 line-clamp-2 leading-snug"
             title={product.title}
           >
             {product.title}
@@ -82,7 +94,7 @@ export function ProductCard({
           {/* Pricing & Ratings Row */}
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1 text-xs text-gray-500">
             {typeof product.price === "number" ? (
-              <div className="flex items-baseline gap-1.5">
+              <div className="flex items-baseline gap-1.5 whitespace-nowrap">
                 <span className="font-bold text-gray-950 text-sm">
                   ₹{product.price.toLocaleString("en-IN")}
                 </span>
@@ -99,14 +111,14 @@ export function ProductCard({
                 )}
               </div>
             ) : (
-              <span className="font-medium text-gray-600 text-xs">
+              <span className="font-medium text-gray-600 text-xs whitespace-nowrap">
                 Price varies / Check on store
               </span>
             )}
 
             {/* Rating (shown only when available) */}
             {typeof product.rating === "number" && (
-              <>
+              <div className="inline-flex items-center gap-1 whitespace-nowrap">
                 <span className="text-gray-300">•</span>
                 <span className="text-amber-700 font-semibold">
                   ★ {product.rating}
@@ -116,7 +128,7 @@ export function ProductCard({
                     ({product.reviewCount.toLocaleString("en-IN")})
                   </span>
                 )}
-              </>
+              </div>
             )}
           </div>
 
@@ -140,12 +152,12 @@ export function ProductCard({
           {(product.deliveryEta || product.seller || product.returnPolicy) && (
             <div className="flex flex-wrap items-center gap-2 mt-1 text-[11px] text-gray-500">
               {product.deliveryEta && (
-                <span>⚡ {product.deliveryEta}</span>
+                <span className="whitespace-nowrap">⚡ {product.deliveryEta}</span>
               )}
               {product.seller && (
                 <>
                   {product.deliveryEta && <span className="text-gray-300">•</span>}
-                  <span className="inline-flex items-center gap-1">
+                  <span className="inline-flex items-center gap-1 whitespace-nowrap">
                     {product.sellerVerified === true ? (
                       <>
                         <ShieldCheck className="size-3 text-emerald-600 inline" />
@@ -168,7 +180,7 @@ export function ProductCard({
               {product.returnPolicy && (
                 <>
                   {(product.deliveryEta || product.seller) && <span className="text-gray-300">•</span>}
-                  <span className="text-gray-400">
+                  <span className="text-gray-400 whitespace-nowrap">
                     {product.returnPolicy}
                   </span>
                 </>
@@ -201,7 +213,7 @@ export function ProductCard({
             />
           </button>
           {onToggleCompare && (
-            <label className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 hover:text-gray-900 cursor-pointer select-none">
+            <label className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 hover:text-gray-900 cursor-pointer select-none whitespace-nowrap">
               <input
                 type="checkbox"
                 checked={isCompared}

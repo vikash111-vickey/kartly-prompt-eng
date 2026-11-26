@@ -7,6 +7,7 @@ import type { SafetyCheckResult } from "@/lib/safety/check";
 export interface CachedAnswer {
   normalizedQuery: string;
   rawQuery?: string;
+  searchQuery?: string;
   text: string;
   products?: Product[];
   safetyCheck?: SafetyCheckResult;
@@ -148,6 +149,7 @@ export function saveCachedAnswer(
     text: string;
     products?: Product[];
     safetyCheck?: SafetyCheckResult;
+    searchQuery?: string;
   }
 ): void {
   try {
@@ -177,6 +179,7 @@ export function saveCachedAnswer(
     data[key] = {
       normalizedQuery: key,
       rawQuery: message,
+      searchQuery: answer.searchQuery,
       text: answer.text,
       products: answer.products,
       safetyCheck: answer.safetyCheck,
