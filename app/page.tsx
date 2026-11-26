@@ -12,22 +12,20 @@ export default function Home() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSendMessage = async (text: string) => {
-    const userMsgId = crypto.randomUUID();
-    const assistantMsgId = crypto.randomUUID();
-
-    const userMessage: ChatMessage = {
-      id: userMsgId,
-      role: "user",
-      content: text,
-    };
-
-    // Update conversation state with user message
-    setMessages((prev) => [...prev, userMessage]);
+  const executeChatRequest = async (
+    text: string,
+    priorHistory: ChatMessage[],
+    assistantMsgId: string
+  ) => {
     setIsLoading(true);
 
+    // Filter out previous failed/error messages or empty messages from history
+    const validHistory = priorHistory
+      .filter((m) => !m.errorCode && m.content.trim())
+      .map((m) => ({ role: m.role, content: m.content }));
+
     const historyToSend = [
-      ...messages.map((m) => ({ role: m.role, content: m.content })),
+      ...validHistory,
       { role: "user" as const, content: text },
     ];
 
@@ -220,12 +218,32 @@ export default function Home() {
     }
   };
 
-  const handleRetry = () => {
-    // Find the last user message to resend
-    const lastUserMessage = [...messages].reverse().find((m) => m.role === "user");
-    if (lastUserMessage) {
-      handleSendMessage(lastUserMessage.content);
-    }
+  const handleSendMessage = async (text: string) => {
+    const userMsgId = crypto.randomUUID();
+    const assistantMsgId = crypto.randomUUID();
+
+    const userMessage: ChatMessage = {
+      id: userMsgId,
+      role: "user",
+      content: text,
+    };
+
+    setMessages((prev) => [...prev, userMessage]);
+    await executeChatRequest(text, messages, assistantMsgId);
+  };
+
+  const handleRetry = async () => {
+    const lastUserIndex = [...messages].map((m) => m.role).lastIndexOf("user");
+    if (lastUserIndex === -1) return;
+
+    const userMsg = messages[lastUserIndex];
+    const priorHistory = messages.slice(0, lastUserIndex);
+
+    // Prune trailing messages after the last user message to remove the failed assistant bubble
+    setMessages(messages.slice(0, lastUserIndex + 1));
+
+    const assistantMsgId = crypto.randomUUID();
+    await executeChatRequest(userMsg.content, priorHistory, assistantMsgId);
   };
 
   const handleReset = () => {

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import type { Content } from "@google/genai";
+import type { Content, Part } from "@google/genai";
+
+// Set Vercel serverless function maximum execution duration to 60 seconds
+export const maxDuration = 60;
 import {
   createGeminiClient,
   getAllGeminiModels,
@@ -44,17 +47,17 @@ async function searchProducts(args: {
   return liveSearchProducts(args);
 }
 
-// Zod validation schema: max 30 messages, max 1000 chars per message
+// Zod validation schema: max 50 messages, max 8000 chars per message
 const chatRequestSchema = z.object({
   messages: z
     .array(
       z.object({
         role: z.enum(["user", "assistant"]),
-        content: z.string().min(1).max(1000),
+        content: z.string().max(8000),
       })
     )
     .min(1)
-    .max(30),
+    .max(50),
 });
 
 // In-memory rate limiting:
@@ -283,10 +286,36 @@ export function createChatStream(options: CreateChatStreamOptions): ReadableStre
             throw error;
           };
 
-          const contents: Content[] = messages.map((m) => ({
-            role: m.role === "assistant" ? "model" : "user",
-            parts: [{ text: m.content }],
-          }));
+          const contents: Content[] = [];
+          for (const m of messages) {
+            const text = (m.content || "").trim();
+            if (!text) continue;
+            const role = m.role === "assistant" ? "model" : "user";
+
+            // If consecutive messages share the same role, merge their text to ensure alternating turns
+            if (contents.length > 0 && contents[contents.length - 1].role === role) {
+              const prev = contents[contents.length - 1];
+              const prevText = prev.parts?.[0]?.text || "";
+              prev.parts = [{ text: `${prevText}\n${text}` }];
+            } else {
+              contents.push({
+                role,
+                parts: [{ text }],
+              });
+            }
+          }
+
+          // Ensure conversation always starts with a user turn
+          while (contents.length > 0 && contents[0].role !== "user") {
+            contents.shift();
+          }
+
+          if (contents.length === 0) {
+            contents.push({
+              role: "user",
+              parts: [{ text: lastUserMsg || "Hi" }],
+            });
+          }
 
           let rounds = 0;
           const maxToolRounds = 2; // Capped at 2 tool rounds per message
@@ -320,6 +349,8 @@ export function createChatStream(options: CreateChatStreamOptions): ReadableStre
               if (candidateContent) {
                 contents.push(candidateContent);
               }
+
+              const functionResponseParts: Part[] = [];
 
               for (const call of functionCalls) {
                 if (call.name === "search_products") {
@@ -371,24 +402,19 @@ export function createChatStream(options: CreateChatStreamOptions): ReadableStre
                   const lowRelevance =
                     products.length < 3 || Boolean(products[0]?.providerFailed);
 
-                  contents.push({
-                    role: "user",
-                    parts: [
-                      {
-                        functionResponse: {
-                          name: "search_products",
-                          response: {
-                            lowRelevance,
-                            note: lowRelevance
-                              ? "No good matches for this category/price. Ask the user one clarifying question (e.g. confirm the product type or suggest a realistic price range) instead of showing bad deals."
-                              : undefined,
-                            products: lowRelevance
-                              ? []
-                              : toModelView(products.slice(0, 5)),
-                          },
-                        },
+                  functionResponseParts.push({
+                    functionResponse: {
+                      name: "search_products",
+                      response: {
+                        lowRelevance,
+                        note: lowRelevance
+                          ? "No good matches for this category/price. Ask the user one clarifying question (e.g. confirm the product type or suggest a realistic price range) instead of showing bad deals."
+                          : undefined,
+                        products: lowRelevance
+                          ? []
+                          : toModelView(products.slice(0, 5)),
                       },
-                    ],
+                    },
                   });
                 } else if (call.name === "check_safety") {
                   const args = (call.args || {}) as Record<string, unknown>;
@@ -396,22 +422,25 @@ export function createChatStream(options: CreateChatStreamOptions): ReadableStre
                   const result = checkLinkOrText(inputStr);
                   safetyCheckResult = result;
 
-                  contents.push({
-                    role: "user",
-                    parts: [
-                      {
-                        functionResponse: {
-                          name: "check_safety",
-                          response: {
-                            verdict: result.verdict,
-                            reasons: result.reasons,
-                            checks: result.checks,
-                          },
-                        },
+                  functionResponseParts.push({
+                    functionResponse: {
+                      name: "check_safety",
+                      response: {
+                        verdict: result.verdict,
+                        reasons: result.reasons,
+                        checks: result.checks,
                       },
-                    ],
+                    },
                   });
                 }
+              }
+
+              // All function responses must be packaged in a single turn with role "user"
+              if (functionResponseParts.length > 0) {
+                contents.push({
+                  role: "user",
+                  parts: functionResponseParts,
+                });
               }
             } else {
               rawResponseText = response.text || "";

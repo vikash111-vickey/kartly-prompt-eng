@@ -168,7 +168,7 @@ export async function searchProducts(args: SearchArgs): Promise<Product[]> {
 
   const shoppingProvider = new ShoppingApiProvider();
   const quickCommerceProvider = new QuickCommerceProvider();
-  const TIMEOUT_MS = 12000;
+  const TIMEOUT_MS = 8000;
 
   // Run a single variant search against ShoppingApiProvider
   const runVariantSearch = async (
